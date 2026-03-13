@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spanish Words Trainer</title>
+
+<style>
+
+/* COLOR PALETTE (soft pastel like user image) */
+:root{
+--green:#b7e4c7;
+--yellow:#f6e7b4;
+--blue:#c9dbe9;
+--pink:#e8c4e8;
+--coral:#f1a7a7;
+--mint:#c7f0d8;
+--card:#ffffff;
+--text:#333;
+}
+
+body{
+font-family:system-ui,Arial;
+margin:0;
+background:linear-gradient(135deg,var(--green),var(--blue));
+min-height:100vh;
+color:var(--text);
+}
+
+header{
+text-align:center;
+padding:22px;
+font-size:26px;
+font-weight:600;
+background:rgba(255,255,255,0.6);
+backdrop-filter:blur(6px);
+}
+
+.container{
+max-width:900px;
+margin:auto;
+padding:16px;
+}
+
+.menu{
+display:flex;
+flex-wrap:wrap;
+gap:10px;
+justify-content:center;
+margin-bottom:16px;
+}
+
+button{
+padding:11px 16px;
+border:none;
+border-radius:12px;
+background:var(--blue);
+font-size:15px;
+cursor:pointer;
+box-shadow:0 6px 12px rgba(0,0,0,0.15);
+transition:0.2s;
+}
+
+button:hover{
+transform:scale(1.05);
+}
+
+button.secondary{
+background:var(--yellow);
+}
+
+.card{
+background:var(--card);
+border-radius:18px;
+padding:26px;
+margin-bottom:16px;
+box-shadow:0 10px 25px rgba(0,0,0,0.15);
+}
+
+.hidden{display:none}
+
+.word{
+font-size:42px;
+font-weight:700;
+text-align:center;
+margin-bottom:6px;
+}
+
+.translation{
+font-size:30px;
+text-align:center;
+margin-top:6px;
+}
+
+.meta{
+text-align:center;
+color:#666;
+margin-top:6px;
+}
+
+.controls{
+text-align:center;
+margin-top:18px;
+}
+
+.controls button{
+margin:6px;
+}
+
+.progress{
+height:10px;
+background:#eee;
+border-radius:10px;
+margin-top:16px;
+}
+
+.progressbar{
+height:10px;
+background:var(--mint);
+border-radius:10px;
+width:0%;
+}
+
+input{
+padding:12px;
+width:100%;
+margin-top:10px;
+font-size:16px;
+border-radius:10px;
+border:1px solid #ccc;
+}
+
+.flashcard{
+font-size:38px;
+text-align:center;
+padding:60px 20px;
+cursor:pointer;
+user-select:none;
+}
+
+.stat{
+font-size:18px;
+margin:8px 0;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>📚 Моите испански думи</header>
+
+<div class="container">
+
+<div class="menu">
+<button onclick="showSection('learn')">Учи</button>
+<button onclick="showSection('flash')">Flashcards</button>
+<button onclick="showSection('test')">Тест</button>
+<button onclick="showSection('search')">Търсене</button>
+<button onclick="showSection('add')">Добави дума</button>
+<button onclick="showSection('stats')">Статистика</button>
+<button class="secondary" onclick="loadFromSheet()">Обнови</button>
+</div>
+
+<!-- LEARN -->
+<div id="learn" class="card">
+<div class="word" id="word"></div>
+<div class="translation hidden" id="translation"></div>
+<div class="meta hidden" id="meta"></div>
+
+<div class="controls">
+<button onclick="speakWord()">🔊</button>
+<button onclick="showAnswer()">Покажи</button>
+<button onclick="mark(0)">❌</button>
+<button onclick="mark(1)">⚠️</button>
+<button onclick="mark(2)">✅</button>
+</div>
+
+<div class="progress"><div class="progressbar" id="progressbar"></div></div>
+</div>
+
+<!-- FLASHCARDS -->
+<div id="flash" class="card hidden">
+<div class="flashcard" onclick="flipCard()" id="flashcard"></div>
+<div class="controls">
+<button onclick="nextFlash()">Следваща</button>
+<button onclick="speakFlash()">🔊</button>
+</div>
+</div>
+
+<!-- ADD -->
+<div id="add" class="card hidden">
+<h3>Добави дума</h3>
+<input id="newSpanish" placeholder="Испанска дума">
+<input id="newBulgarian" placeholder="Български превод">
+<button onclick="autoTranslate('es-bg')">ES → BG</button>
+<button onclick="autoTranslate('bg-es')">BG → ES</button>
+<button onclick="voiceAdd()">🎤 кажи думата</button>
+<button onclick="saveWord()">Запази</button>
+<div id="addResult"></div>
+</div>
+
+<!-- TEST -->
+<div id="test" class="card hidden">
+<div class="word" id="testWord"></div>
+<input id="testInput" placeholder="Напиши думата">
+<button onclick="checkTest()">Провери</button>
+<div id="testResult"></div>
+</div>
+
+<!-- SEARCH -->
+<div id="search" class="card hidden">
+<input id="searchInput" placeholder="Търси" oninput="searchWord()">
+<div id="searchResults"></div>
+</div>
+
+<!-- STATS -->
+<div id="stats" class="card hidden">
+<div class="stat" id="total"></div>
+<div class="stat" id="known"></div>
+<div class="stat" id="learning"></div>
+</div>
+
+</div>
+
+<script>
+
+let words=[]
+let current=null
+let flashWord=null
+let flashSide=0
+
+const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vRfB4ORyGOmuJq88UT1ajVUqMr-33_StxhVVZtROT2m8ubPj6JvXHut9oNOhj-ahmJ3ogYB77aw0PaQ/pub?output=csv"
+
+function showSection(id){
+['learn','flash','test','search','add','stats'].forEach(s=>{
+let el=document.getElementById(s)
+if(el) el.classList.add('hidden')
+})
+
+document.getElementById(id).classList.remove('hidden')
+
+if(id==='learn') nextWord()
+if(id==='flash') nextFlash()
+if(id==='test') generateTest()
+if(id==='stats') updateStats()
+}
+
+async function loadFromSheet(){
+if(SHEET_URL.includes('PASTE')){
+alert('Постави линка към Google Sheet')
+return
+}
+
+let res=await fetch(SHEET_URL)
+let text=await res.text()
+
+let rows=text.split('\n').slice(1)
+
+words=rows.map(r=>{
+let c=r.split(',')
+return{
+spanish:c[0],
+bulgarian:c[1],
+score:0,
+review:Date.now()
+}
+}).filter(w=>w.spanish)
+
+localStorage.setItem('words',JSON.stringify(words))
+alert('Заредени '+words.length+' думи')
+}
+
+function loadLocal(){
+let data=localStorage.getItem('words')
+if(data) words=JSON.parse(data)
+}
+
+function nextWord(){
+if(words.length===0) loadLocal()
+
+current=words[Math.floor(Math.random()*words.length)]
+
+document.getElementById('word').innerText=current.spanish
+
+document.getElementById('translation').innerText=current.bulgarian
+
+['translation','meta'].forEach(id=>document.getElementById(id).classList.add('hidden'))
+
+updateProgress()
+}
+
+function showAnswer(){
+let t=document.getElementById('translation')
+if(t.classList.contains('hidden')){
+t.classList.remove('hidden')
+}else{
+nextWord()
+}
+}
+
+function speakWord(){
+if(!current) return
+let speech=new SpeechSynthesisUtterance(current.spanish)
+speech.lang="es-ES"
+speechSynthesis.speak(speech)
+}
+
+function mark(v){
+current.score+=v
+localStorage.setItem('words',JSON.stringify(words))
+nextWord()
+}
+
+function nextFlash(){
+if(words.length===0) loadLocal()
+flashWord=words[Math.floor(Math.random()*words.length)]
+flashSide=0
+
+document.getElementById('flashcard').innerText=flashWord.spanish
+}
+
+function flipCard(){
+if(!flashWord) return
+
+if(flashSide===0){
+document.getElementById('flashcard').innerText=flashWord.bulgarian
+flashSide=1
+}else{
+document.getElementById('flashcard').innerText=flashWord.spanish
+flashSide=0
+}
+}
+
+function speakFlash(){
+if(!flashWord) return
+let speech=new SpeechSynthesisUtterance(flashWord.spanish)
+speech.lang="es-ES"
+speechSynthesis.speak(speech)
+}
+
+function generateTest(){
+if(words.length===0) loadLocal()
+current=words[Math.floor(Math.random()*words.length)]
+document.getElementById('testWord').innerText=current.bulgarian
+}
+
+function checkTest(){
+let val=document.getElementById('testInput').value.toLowerCase()
+
+if(val===current.spanish.toLowerCase()){
+
+document.getElementById('testResult').innerText='✅ Правилно'
+
+}else{
+
+document.getElementById('testResult').innerText='❌ '+current.spanish
+
+}
+}
+
+function searchWord(){
+let q=document.getElementById('searchInput').value.toLowerCase()
+
+let results=words.filter(w=>
+w.spanish.toLowerCase().includes(q)||
+w.bulgarian.toLowerCase().includes(q)
+)
+
+let html=""
+
+results.slice(0,30).forEach(w=>{
+html+=`<div>${w.spanish} – ${w.bulgarian}</div>`
+})
+
+if(results.length===0) html="Няма резултати"
+
+document.getElementById('searchResults').innerHTML=html
+}
+
+async function autoTranslate(direction){
+let es=document.getElementById('newSpanish')
+let bg=document.getElementById('newBulgarian')
+
+let text=direction==='es-bg'?es.value:bg.value
+
+let langpair=direction==='es-bg'?'es|bg':'bg|es'
+
+let url=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langpair}`
+
+let res=await fetch(url)
+let data=await res.json()
+
+let translated=data.responseData.translatedText
+
+if(direction==='es-bg') bg.value=translated
+else es.value=translated
+}
+
+function saveWord(){
+let es=document.getElementById('newSpanish').value.trim()
+let bg=document.getElementById('newBulgarian').value.trim()
+
+if(!es||!bg){
+alert('Попълни двете полета')
+return
+}
+
+words.push({spanish:es,bulgarian:bg,score:0})
+
+localStorage.setItem('words',JSON.stringify(words))
+
+document.getElementById('addResult').innerText='Думата е добавена'
+
+}
+
+function voiceAdd(){
+let recognition=new(window.SpeechRecognition||window.webkitSpeechRecognition)()
+recognition.lang='es-ES'
+
+recognition.onresult=function(e){
+let word=e.results[0][0].transcript
+
+document.getElementById('newSpanish').value=word
+}
+
+recognition.start()
+}
+
+function updateStats(){
+if(words.length===0) loadLocal()
+
+let known=words.filter(w=>w.score>3).length
+let learning=words.length-known
+
+
+document.getElementById('total').innerText='Общо думи: '+words.length
+
+document.getElementById('known').innerText='Научени: '+known
+
+document.getElementById('learning').innerText='В процес: '+learning
+}
+
+function updateProgress(){
+let known=words.filter(w=>w.score>3).length
+
+let percent=Math.round((known/words.length)*100)
+
+document.getElementById('progressbar').style.width=percent+'%'
+}
+
+loadLocal()
+nextWord()
+
+</script>
+
+</body>
+</html>
