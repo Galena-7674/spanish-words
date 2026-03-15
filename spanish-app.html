@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spanish Words Pro</title>
+<title>Spanish Words</title>
 
 <style>
-body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#0fb9b1,#48dbfb);margin:0;color:#0f172a}
-header{padding:16px;text-align:center;font-size:22px;font-weight:bold;color:white}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;background:linear-gradient(135deg,#c7e9f1,#f4d9e6,#c8f0e0);color:#0f172a}
+header{padding:16px;text-align:center;font-size:22px;font-weight:bold;color:#0f172a}
 .container{max-width:950px;margin:auto;padding:16px}
 .card{background:white;border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
-button{padding:10px 14px;border:none;border-radius:10px;background:#0fb9b1;color:white;font-size:14px;margin:4px;cursor:pointer}
-button.green{background:#10ac84}
-button.orange{background:#ff9f43}
+button{padding:10px 14px;border:none;border-radius:10px;background:#6bb6c8;color:white;font-size:14px;margin:4px;cursor:pointer}
+button.green{background:#4caf8d}
+button.orange{background:#ff9f6b}
 input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px 0}
 .word{font-size:28px;font-weight:bold;margin-bottom:8px}
 .translation{font-size:22px;margin:10px 0}
@@ -20,7 +20,7 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 .hidden{display:none}
 .nav{display:flex;flex-wrap:wrap;justify-content:center;margin-bottom:15px}
 .progress{height:8px;background:#e5e7eb;border-radius:6px;margin:10px 0}
-.progressbar{height:8px;background:#10ac84;border-radius:6px;width:0%}
+.progressbar{height:8px;background:#4caf8d;border-radius:6px;width:0%}
 </style>
 </head>
 
@@ -36,7 +36,9 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 <button onclick="show('game')">Игра</button>
 <button onclick="show('dictionary')">Речник</button>
 <button onclick="show('add')">Добави дума</button>
+<button onclick="refreshSheet()">🔄 Обнови</button>
 <button onclick="show('stats')">Статистика</button>
+<button onclick="show('settings')">Настройки</button>
 </div>
 
 <div id="learn" class="card">
@@ -49,7 +51,7 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 <button onclick="showTranslation()">Покажи</button>
 <button class="green" onclick="markKnown()">Знам</button>
 <button onclick="nextLearn()">Следваща</button>
-<button onclick="speak(currentWord.es)">🔊</button>
+<button onclick="speak(currentWord.spanish)">🔊</button>
 </div>
 
 <div id="flash" class="card hidden">
@@ -61,7 +63,7 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 <button onclick="prevFlash()">⬅️ Предишна</button>
 <button onclick="nextFlash()">➡️ Следваща</button>
 <button class="green" onclick="markKnownFlash()">Знам</button>
-<button onclick="speak(flashCurrent.es)">🔊</button>
+<button onclick="speak(flashCurrent.spanish)">🔊</button>
 </div>
 
 <div id="test" class="card hidden">
@@ -90,7 +92,6 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 <h3>Добави дума</h3>
 <input id="newEs" placeholder="Испански">
 <input id="newBg" placeholder="Български">
-<button onclick="autoFill()">Авто попълване</button>
 <button onclick="addWord()">Добави</button>
 <button onclick="voiceAdd()">🎤</button>
 </div>
@@ -100,49 +101,60 @@ input{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;margin:6px
 <div id="statsBox"></div>
 </div>
 
+<div id="settings" class="card hidden">
+<h3>Настройки</h3>
+<label>Думи на ден</label>
+<input id="lessonSizeInput" type="number" value="10">
+<button onclick="saveSettings()">Запази</button>
+</div>
+
 </div>
 
 <script>
 
+const SHEET_URL="https://docs.google.com/spreadsheets/d/e/2PACX-1vRfB4ORyGOmuJq88UT1ajVUqMr-33_StxhVVZtROT2m8ubPj6JvXHut9oNOhj-ahmJ3ogYB77aw0PaQ/pub?output=csv"
+
 let words=[]
+let lessonSize=10
 let currentIndex=0
 let flashIndex=0
 let testIndex=0
 let learnedToday=0
-let reviewToday=0
-let lessonSize=10
 let currentWord={}
 let flashCurrent={}
-
-const sheetURL="https://galena-7674.github.io/spanish-words/spanish-app.html"
 
 function saveLocal(){localStorage.setItem("spanishWords",JSON.stringify(words))}
 function loadLocal(){let d=localStorage.getItem("spanishWords");if(d)words=JSON.parse(d)}
 
-async function loadWords(){
-loadLocal()
-if(words.length===0){
-try{
-let r=await fetch(sheetURL)
-words=await r.json()
-}catch{
-words=[
-{es:"sociedad",bg:"общество",type:"sustantivo",gender:"f",example:"La sociedad cambia"},
-{es:"aunque",bg:"въпреки",type:"conjunción"},
-{es:"aprovechar",bg:"възползвам се",type:"verbo",example:"Aprovechar la oportunidad"}
-]
-}
-}
-updateStats()
-renderDictionary()
-startLearn()
-}
-
 function show(id){
-["learn","flash","test","game","dictionary","add","stats"].forEach(s=>{
+["learn","flash","test","game","dictionary","add","stats","settings"].forEach(s=>{
 document.getElementById(s).classList.add("hidden")
 })
 document.getElementById(id).classList.remove("hidden")
+}
+
+async function refreshSheet(){
+let res=await fetch(SHEET_URL)
+let text=await res.text()
+let rows=text.trim().split("\n").slice(1)
+let list=rows.map(r=>{
+let c=r.split(",")
+return{
+spanish:c[0],
+bulgarian:c[1],
+pos:c[2],
+gender:c[3],
+example:c[4],
+score:c[5]||0,
+review:c[6]||""
+}
+})
+words=list
+saveLocal()
+startLearn()
+renderDictionary()
+updateStats()
+alert("Таблицата е обновена")
 }
 
 function startLearn(){
@@ -151,27 +163,26 @@ nextLearn()
 }
 
 function updatePlan(){
-document.getElementById("todayPlan").innerText="Днес: " + lessonSize + " нови думи"
+document.getElementById("todayPlan").innerText="Днес: "+lessonSize+" думи"
 }
 
 function nextLearn(){
 currentIndex=(currentIndex+1)%words.length
 currentWord=words[currentIndex]
-document.getElementById("learnWord").innerText=currentWord.es
-let meta=""
-if(currentWord.type)meta+=currentWord.type+" "
-if(currentWord.gender)meta+=currentWord.gender
-if(currentWord.example)meta+=" • " + currentWord.example
+document.getElementById("learnWord").innerText=currentWord.spanish
+let meta=(currentWord.pos||"")+" "+(currentWord.gender||"")
+if(currentWord.example)meta+=" • "+currentWord.example
+
 document.getElementById("learnMeta").innerText=meta
 let tr=document.getElementById("learnTranslation")
-tr.innerText=currentWord.bg
+tr.innerText=currentWord.bulgarian
 tr.classList.add("hidden")
 updateProgress()
 }
 
 function showTranslation(){document.getElementById("learnTranslation").classList.remove("hidden")}
 
-function markKnown(){words[currentIndex].known=true;learnedToday++;saveLocal();updateStats();nextLearn()}
+function markKnown(){learnedToday++;updateProgress();nextLearn()}
 
 function updateProgress(){
 let percent=(learnedToday/lessonSize)*100
@@ -184,26 +195,26 @@ function toggleFlash(){document.getElementById("flashTranslation").classList.tog
 function nextFlash(){
 flashIndex=(flashIndex+1)%words.length
 flashCurrent=words[flashIndex]
-document.getElementById("flashWord").innerText=flashCurrent.es
-let meta=""
-if(flashCurrent.type)meta+=flashCurrent.type+" "
-if(flashCurrent.gender)meta+=flashCurrent.gender
-document.getElementById("flashMeta").innerText=meta
+document.getElementById("flashWord").innerText=flashCurrent.spanish
 
-document.getElementById("flashTranslation").innerText=flashCurrent.bg
+document.getElementById("flashMeta").innerText=(flashCurrent.pos||"")+" "+(flashCurrent.gender||"")
+
+document.getElementById("flashTranslation").innerText=flashCurrent.bulgarian
+
 document.getElementById("flashTranslation").classList.add("hidden")
 }
 
 function prevFlash(){flashIndex--;if(flashIndex<0)flashIndex=words.length-1;nextFlash()}
 
-function markKnownFlash(){words[flashIndex].known=true;saveLocal();updateStats();nextFlash()}
+function markKnownFlash(){nextFlash()}
 
 function nextTest(){
 testIndex=(testIndex+1)%words.length
 let w=words[testIndex]
 let direction=Math.random()>0.5
-if(direction){currentWord={q:w.es,a:w.bg}}
-else{currentWord={q:w.bg,a:w.es}}
+
+if(direction){currentWord={q:w.spanish,a:w.bulgarian}}
+else{currentWord={q:w.bulgarian,a:w.spanish}}
 
 document.getElementById("testWord").innerText=currentWord.q
 
@@ -216,37 +227,42 @@ let val=document.getElementById("testInput").value.trim().toLowerCase()
 if(val===currentWord.a.toLowerCase()){
 document.getElementById("testResult").innerText="✔️ Правилно"
 }else{
-document.getElementById("testResult").innerText="❌ " + currentWord.a
+document.getElementById("testResult").innerText="❌ "+currentWord.a
 }
 }
 
 function startGame(){
 let w=words[Math.floor(Math.random()*words.length)]
-document.getElementById("gameWord").innerText=w.es
-let opts=[w.bg]
+document.getElementById("gameWord").innerText=w.spanish
+
+let opts=[w.bulgarian]
 while(opts.length<4){
-let r=words[Math.floor(Math.random()*words.length)].bg
+let r=words[Math.floor(Math.random()*words.length)].bulgarian
 if(!opts.includes(r))opts.push(r)
 }
 opts.sort(()=>Math.random()-0.5)
+
 let html=""
-opts.forEach(o=>{html+=`<button onclick="answerGame('${o}','${w.bg}')">${o}</button>`})
+opts.forEach(o=>{html+=`<button onclick="answerGame('${o}','${w.bulgarian}')">${o}</button>`})
+
 document.getElementById("gameOptions").innerHTML=html
 }
 
 function answerGame(ans,correct){
 if(ans===correct){document.getElementById("gameResult").innerText="✔️"}
-else{document.getElementById("gameResult").innerText="❌ " + correct}
+else{document.getElementById("gameResult").innerText="❌ "+correct}
 setTimeout(startGame,1200)
 }
 
 function renderDictionary(){
-let q=document.getElementById("search").value?.toLowerCase()||""
-let list=words.filter(w=>w.es.toLowerCase().includes(q)||w.bg.toLowerCase().includes(q))
+let q=document.getElementById("search")?.value?.toLowerCase()||""
+let list=words.filter(w=>w.spanish.toLowerCase().includes(q)||w.bulgarian.toLowerCase().includes(q))
+
 let html=""
 list.forEach(w=>{
-html+=`<div>${w.es} – ${w.bg} <span class='small'>${w.type||""} ${w.gender||""}</span> <button onclick="speak('${w.es}')">🔊</button></div>`
+html+=`<div>${w.spanish} – ${w.bulgarian} <span class='small'>${w.pos||""} ${w.gender||""}</span> <button onclick="speak('${w.spanish}')">🔊</button></div>`
 })
+
 document.getElementById("dictList").innerHTML=html
 }
 
@@ -254,27 +270,11 @@ function addWord(){
 let es=document.getElementById("newEs").value
 let bg=document.getElementById("newBg").value
 if(!es||!bg)return
-words.push({es,bg})
+
+words.push({spanish:es,bulgarian:bg})
 saveLocal()
-document.getElementById("newEs").value=""
-document.getElementById("newBg").value=""
 renderDictionary()
 updateStats()
-}
-
-async function autoFill(){
-let word=document.getElementById("newEs").value
-if(!word)return
-
-try{
-let r=await fetch("https://api.dictionaryapi.dev/api/v2/entries/es/"+word)
-let d=await r.json()
-let type=d[0].meanings?.[0]?.partOfSpeech
-let example=d[0].meanings?.[0]?.definitions?.[0]?.example
-
-if(type)alert("Част на речта: "+type)
-if(example)alert("Пример: "+example)
-}catch{}
 }
 
 function voiceAdd(){
@@ -292,14 +292,19 @@ speechSynthesis.speak(u)
 
 function updateStats(){
 let total=words.length
-let known=words.filter(w=>w.known).length
-let learning=total-known
 
-document.getElementById("statsBox").innerHTML=
-"Общо думи: "+total+"<br>Научени: "+known+"<br>В процес: "+learning
+document.getElementById("statsBox").innerHTML="Общо думи: "+total
 }
 
-loadWords()
+function saveSettings(){
+lessonSize=parseInt(document.getElementById("lessonSizeInput").value)||10
+updatePlan()
+alert("Настройките са запазени")
+}
+
+loadLocal()
+if(words.length===0){refreshSheet()}
+
 nextFlash()
 nextTest()
 startGame()
